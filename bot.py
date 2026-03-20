@@ -245,15 +245,40 @@ async def logconfig(interaction: discord.Interaction, channel: discord.TextChann
     await interaction.response.send_message(f"Log channel set to {channel.mention}.", ephemeral=True)
 
 # ----------------- WARNING SYSTEM -----------------
+
 @bot.tree.command(name="warn", description="Warn a member")
-@app_commands.describe(member="Member", reason="Reason")
+@app_commands.describe(
+    member="The member to warn", 
+    reason="Reason for the warning",
+    hidden="If True, your name won't be shown in the public warning message"
+)
 @app_commands.checks.has_permissions(kick_members=True)
-async def warn(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided"):
+async def warn(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided", hidden: bool = False):
+    # Log to Database (Internal logs always keep the real moderator ID)
     async with aiosqlite.connect(DB_WARNS) as db:
         await db.execute("INSERT INTO warns(guild_id,user_id,moderator_id,reason,timestamp) VALUES(?,?,?,?,?)",
                          (interaction.guild.id, member.id, interaction.user.id, reason, datetime.utcnow().isoformat()))
         await db.commit()
-    await interaction.response.send_message(f"{member.mention} warned. Reason: {reason}", ephemeral=True)
+
+    # Determine display name for the moderator
+    moderator_display = "Staff Member" if hidden else interaction.user.mention
+
+    # Create Public Embed
+    embed = discord.Embed(
+        title="⚠️ Warning Issued",
+        description=f"{member.mention} has been officially warned.",
+        color=discord.Color.orange(),
+        timestamp=datetime.utcnow()
+    )
+    embed.add_field(name="Reason", value=reason, inline=False)
+    embed.add_field(name="Moderator", value=moderator_display, inline=True)
+    embed.set_footer(text=f"User ID: {member.id}")
+    embed.set_thumbnail(url=member.display_avatar.url)
+
+    # Send message (Not ephemeral so the community/user sees the warning)
+    await interaction.response.send_message(content=member.mention, embed=embed)
+    
+    # Internal Log (Always shows who it actually was)
     await log_embed(interaction.guild, "⚠️ Member Warned", f"{member.mention} warned by {interaction.user.mention}. Reason: {reason}", discord.Color.orange())
 
 @bot.tree.command(name="warns", description="View member warnings")
@@ -263,22 +288,41 @@ async def warnings(interaction: discord.Interaction, member: discord.Member):
     async with aiosqlite.connect(DB_WARNS) as db:
         async with db.execute("SELECT moderator_id,reason,timestamp FROM warns WHERE guild_id=? AND user_id=?", (interaction.guild.id, member.id)) as cur:
             rows = await cur.fetchall()
+            
     if not rows:
         await interaction.response.send_message(f"{member.mention} has no warnings.", ephemeral=True)
         return
+
     embed = discord.Embed(title=f"Warnings for {member}", color=discord.Color.orange())
     for idx, (mod, r, ts) in enumerate(rows, 1):
-        embed.add_field(name=f"#{idx}", value=f"By <@{mod}> | {r} | {ts}", inline=False)
+        # Format the timestamp for better readability
+        date_obj = datetime.fromisoformat(ts).strftime("%Y-%m-%d %H:%M")
+        embed.add_field(name=f"Warning #{idx}", value=f"**By:** <@{mod}>\n**Reason:** {r}\n**Date:** {date_obj}", inline=False)
+    
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="clearwarns", description="Clear all warnings for a member")
-@app_commands.describe(member="Member")
+@app_commands.describe(member="Member", reason="Reason for clearing these warnings")
 @app_commands.checks.has_permissions(kick_members=True)
-async def clearwarns(interaction: discord.Interaction, member: discord.Member):
+async def clearwarns(interaction: discord.Interaction, member: discord.Member, reason: str = "Issue resolved"):
     async with aiosqlite.connect(DB_WARNS) as db:
         await db.execute("DELETE FROM warns WHERE guild_id=? AND user_id=?", (interaction.guild.id, member.id))
         await db.commit()
-    await interaction.response.send_message(f"Cleared all warnings for {member.mention}.", ephemeral=True)
+
+    # Create Embed for clearing warnings
+    embed = discord.Embed(
+        title="✅ Warnings Cleared",
+        description=f"All warnings for {member.mention} have been removed.",
+        color=discord.Color.green(),
+        timestamp=datetime.utcnow()
+    )
+    embed.add_field(name="Operator", value=interaction.user.mention, inline=True)
+    embed.add_field(name="Reason", value=reason, inline=True)
+    
+    await interaction.response.send_message(content=member.mention, embed=embed)
+    
+    # Log the action
+    await log_embed(interaction.guild, "🧹 Warnings Cleared", f"Warnings for {member.mention} cleared by {interaction.user.mention}. Reason: {reason}", discord.Color.green())
 
 # ----------------- MODERATION ACTION -----------------
 async def moderation_action(interaction: discord.Interaction, member: discord.Member, action: str, reason: str = "No reason provided", duration: int = 0, role_obj: discord.Role = None):
