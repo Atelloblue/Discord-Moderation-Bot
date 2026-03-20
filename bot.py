@@ -53,6 +53,66 @@ class MyBot(commands.Bot):
 
 bot = MyBot()
 
+# ----------------- HELP COMMAND -----------------
+@bot.tree.command(name="help", description="Shows a list of all available commands")
+async def help_command(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🛡️ Bot Command Help",
+        description="Detailed list of all available slash commands. Use them by typing `/` followed by the command name.",
+        color=discord.Color.blue()
+    )
+
+    embed.add_field(
+        name="🛠️ Moderation",
+        value=(
+            "`/kick [member] [reason]` - Kick a member\n"
+            "`/ban [member] [reason]` - Ban a member\n"
+            "`/softban [member] [reason]` - Ban and immediately unban\n"
+            "`/timeout [member] [duration] [reason]` - Time out a member\n"
+            "`/mute [member] [reason] [duration]` - Add the Muted role\n"
+            "`/unmute [member]` - Remove the Muted role\n"
+            "`/nick [member] [nickname]` - Change a member's name\n"
+            "`/role [member] [role] [action:add/remove]` - Manage roles"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚠️ Warning System",
+        value=(
+            "`/warn [member] [reason]` - Give a member a warning\n"
+            "`/warns [member]` - View a member's warning history\n"
+            "`/clearwarns [member]` - Delete all warnings for a member"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚙️ Management & Config",
+        value=(
+            "`/logconfig [channel]` - Set the logging channel\n"
+            "`/automod toggle [preset] [on/off]` - Manage filters\n"
+            "`/lock [channel]` - Prevent users from sending messages\n"
+            "`/unlock [channel]` - Allow users to send messages"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="📊 Info & Tools",
+        value=(
+            "`/serverinfo` - Display information about this server\n"
+            "`/userinfo [member]` - Display information about a user\n"
+            "`/ping` - Check bot latency\n"
+            "`/embed [title] [description] ...` - Create a custom embed"
+        ),
+        inline=False
+    )
+
+    embed.set_footer(text=f"Requested by {interaction.user}", icon_url=interaction.user.display_avatar.url)
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 # ----------------- UTILITIES -----------------
 async def get_muted_role(guild: discord.Guild) -> discord.Role:
     role = discord.utils.get(guild.roles, name="Muted")
